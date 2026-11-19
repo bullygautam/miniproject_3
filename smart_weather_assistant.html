@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AtmosAI — Weather Assistant</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] } } }
+    };
+  </script>
+  <style>
+    body { background: #0b0f17; color: #f1f5f9; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+    .card { background: rgba(18, 24, 38, 0.92); border: 1px solid rgba(148, 163, 184, 0.14); }
+    .sub { background: rgba(24, 33, 52, 0.72); border: 1px solid rgba(148, 163, 184, 0.12); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.28); border-radius: 999px; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div id="toast" class="fixed bottom-4 right-4 z-50 hidden px-4 py-2.5 rounded-xl bg-slate-900 border border-indigo-500/40 text-xs sm:text-sm shadow-xl"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-[#0b0f17]/90 backdrop-blur">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 flex items-center justify-center font-bold text-white">☁</div>
+        <div>
+          <h1 class="text-base sm:text-lg font-bold leading-tight">AtmosAI</h1>
+          <p class="text-[11px] text-slate-400 hidden sm:block">Open-Meteo Weather &amp; Decision Engine</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="open-ai-btn" type="button" class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer">AI Assistant</button>
+        <button id="open-compare-btn" type="button" class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium sub hover:border-indigo-400/40 cursor-pointer">Compare</button>
+        <button id="open-glossary-btn" type="button" class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium sub hover:border-indigo-400/40 cursor-pointer">Glossary</button>
+        <div class="inline-flex rounded-xl p-0.5 sub">
+          <button id="unit-metric-btn" type="button" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-500 text-white cursor-pointer">°C / km/h</button>
+          <button id="unit-imperial-btn" type="button" class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-400 cursor-pointer">°F / mph</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <!-- 1. City Search, Geolocation & Favorites -->
+    <section class="space-y-2.5">
+      <div class="flex flex-col md:flex-row gap-2.5">
+        <div class="relative flex-1">
+          <input id="city-search-input" type="text" autocomplete="off" placeholder="Search city (e.g., Dehradun, Tokyo, London, New York)..." class="w-full px-4 py-2.5 rounded-xl card text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/60" />
+          <div id="search-dropdown" class="hidden absolute left-0 right-0 mt-1.5 rounded-2xl card shadow-2xl z-40 max-h-64 overflow-y-auto divide-y divide-slate-800/70"></div>
+        </div>
+        <button id="geolocate-btn" type="button" class="px-4 py-2.5 rounded-xl sub hover:border-emerald-400/50 text-sm font-medium cursor-pointer shrink-0">📍 My Location</button>
+        <button id="bookmark-btn" type="button" class="px-4 py-2.5 rounded-xl sub hover:border-amber-400/50 text-sm font-medium cursor-pointer shrink-0">☆ Save City</button>
+      </div>
+      <div id="favorites-strip" class="flex items-center gap-2 flex-wrap text-xs"></div>
+      <div id="error-banner" class="hidden rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-xs sm:text-sm text-rose-200 flex items-center justify-between gap-2">
+        <span id="error-text"></span>
+        <button id="retry-btn" type="button" class="px-2.5 py-1 rounded-lg bg-rose-500/20 font-medium cursor-pointer">Retry</button>
+      </div>
+    </section>
+
+    <!-- 2 & 3. Hero Weather + Plain-English Summary -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div class="lg:col-span-7 card rounded-3xl p-6 flex flex-col justify-between gap-5">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full sub text-slate-300 mb-3">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span id="hero-city">Dehradun, India</span>
+              <span id="hero-updated" class="font-mono text-slate-400"></span>
+            </div>
+            <div class="flex items-center gap-4">
+              <span id="hero-icon" class="text-5xl sm:text-6xl">🌤️</span>
+              <div>
+                <div class="flex items-baseline gap-2.5">
+                  <span id="hero-temp" class="text-5xl sm:text-6xl font-extrabold font-mono">--°</span>
+                  <span id="hero-cond" class="text-lg font-semibold text-slate-200">Loading...</span>
+                </div>
+                <p id="hero-feels" class="text-xs sm:text-sm text-slate-400 mt-1">Feels like --°</p>
+              </div>
+            </div>
+          </div>
+          <div class="sub rounded-2xl px-4 py-3 text-right">
+            <div class="text-[11px] uppercase text-slate-400">High / Low</div>
+            <div class="font-mono text-sm font-semibold mt-0.5">
+              <span id="hero-high" class="text-rose-400">--°</span> / <span id="hero-low" class="text-sky-400">--°</span>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-3 pt-4 border-t border-slate-800/80 text-xs sm:text-sm">
+          <div class="sub rounded-2xl p-3"><div class="text-slate-400 text-xs">Humidity</div><div id="stat-hum" class="font-mono font-semibold mt-0.5">--%</div></div>
+          <div class="sub rounded-2xl p-3"><div class="text-slate-400 text-xs">Wind</div><div id="stat-wind" class="font-mono font-semibold mt-0.5">--</div></div>
+          <div class="sub rounded-2xl p-3"><div class="text-slate-400 text-xs">Rain Risk</div><div id="stat-rain" class="font-mono font-semibold mt-0.5">--%</div></div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-5 card rounded-3xl p-6 flex flex-col justify-between bg-gradient-to-br from-indigo-500/10 to-sky-500/10">
+        <div class="space-y-2.5">
+          <div class="text-xs font-semibold uppercase tracking-wider text-indigo-400">Plain-English Summary</div>
+          <h2 id="summary-title" class="text-lg sm:text-xl font-bold leading-snug">Checking today's conditions...</h2>
+          <p id="summary-desc" class="text-xs sm:text-sm text-slate-300 leading-relaxed"></p>
+        </div>
+        <div class="mt-4 pt-3.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-xs">
+          <span class="text-slate-300"><strong class="text-indigo-300">Gear:</strong> <span id="summary-gear">--</span></span>
+          <button id="summary-ai-link" type="button" class="text-indigo-400 hover:text-indigo-300 font-semibold shrink-0 cursor-pointer">Ask AI →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Core Metric Decoders -->
+    <section class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base sm:text-lg font-bold">Core Metric Decoders</h2>
+        <span class="text-xs text-slate-400">Click any card for scale breakdown</span>
+      </div>
+      <div id="metrics-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5"></div>
+    </section>
+
+    <!-- 5. 24-Hour & 7-Day Forecasts -->
+    <section class="grid grid-cols-1 xl:grid-cols-12 gap-5">
+      <div class="xl:col-span-7 card rounded-3xl p-5 sm:p-6 space-y-4">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="text-base sm:text-lg font-bold">24-Hour Forecast</h2>
+          <span class="text-xs text-slate-400 font-mono">Amber: Temp • Blue: Rain %</span>
+        </div>
+        <div class="sub rounded-2xl p-2.5">
+          <svg id="hourly-svg" viewBox="0 0 720 175" class="w-full h-40 sm:h-44"></svg>
+        </div>
+        <div id="hourly-strip" class="flex gap-2.5 overflow-x-auto pb-1"></div>
+      </div>
+
+      <div class="xl:col-span-5 card rounded-3xl p-5 sm:p-6 space-y-3">
+        <h2 class="text-base sm:text-lg font-bold">7-Day Forecast</h2>
+        <div id="daily-list" class="divide-y divide-slate-800/70"></div>
+      </div>
+    </section>
+
+    <!-- 6. Outfit & 5-Activity Engine -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div class="lg:col-span-5 card rounded-3xl p-5 sm:p-6 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base sm:text-lg font-bold">Outfit Suggestions</h2>
+          <span id="outfit-tag" class="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300">--</span>
+        </div>
+        <div id="outfit-list" class="space-y-2"></div>
+      </div>
+
+      <div class="lg:col-span-7 card rounded-3xl p-5 sm:p-6 space-y-3">
+        <h2 class="text-base sm:text-lg font-bold">5-Activity Suitability</h2>
+        <div id="activities-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: Compare Saved Cities -->
+  <div id="compare-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div class="card rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="text-base sm:text-lg font-bold">Saved Cities Comparison</h3>
+        <button data-close="compare-modal" type="button" class="px-2.5 py-1 rounded-lg sub text-xs cursor-pointer">✕</button>
+      </div>
+      <div id="compare-body" class="p-5 overflow-x-auto text-xs sm:text-sm"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Metric Scales & Searchable Glossary -->
+  <div id="glossary-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div class="card rounded-3xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex gap-2">
+          <button id="tab-scales" type="button" class="px-3 py-1 rounded-xl text-xs font-semibold bg-indigo-600 text-white cursor-pointer">Metric Scales</button>
+          <button id="tab-terms" type="button" class="px-3 py-1 rounded-xl text-xs font-semibold sub cursor-pointer">Glossary</button>
+        </div>
+        <button data-close="glossary-modal" type="button" class="px-2.5 py-1 rounded-lg sub text-xs cursor-pointer">✕</button>
+      </div>
+      <div class="p-5 overflow-y-auto space-y-4">
+        <div id="scales-panel" class="space-y-3"></div>
+        <div id="terms-panel" class="hidden space-y-3">
+          <input id="glossary-search" type="text" placeholder="Search weather terms (dew point, AQI, UV, gusts)..." class="w-full px-3.5 py-2 rounded-xl sub text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/60" />
+          <div id="terms-list" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: AI Weather Assistant -->
+  <div id="ai-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div class="card rounded-3xl w-full max-w-2xl max-h-[88vh] flex flex-col overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between gap-2">
+        <div>
+          <h3 class="text-base sm:text-lg font-bold">AI Weather Assistant</h3>
+          <p id="ai-status" class="text-xs text-slate-400">Local weather-aware engine ready (optional Gemini key supported)</p>
+        </div>
+        <button data-close="ai-modal" type="button" class="px-2.5 py-1 rounded-lg sub text-xs cursor-pointer">✕</button>
+      </div>
+      <div class="px-6 py-2.5 border-b border-slate-800/80 flex flex-col sm:flex-row gap-2">
+        <input id="gemini-key-input" type="password" placeholder="Optional Gemini API key (uses smart local fallback if blank)" class="flex-1 px-3 py-1.5 rounded-xl sub text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/60" />
+        <div class="flex gap-1.5 overflow-x-auto">
+          <button type="button" data-q="What should I wear today?" class="ai-preset shrink-0 px-2.5 py-1 rounded-lg sub text-xs hover:border-indigo-400/50 cursor-pointer">Outfit</button>
+          <button type="button" data-q="Is today good for running, laundry, or outdoor dining?" class="ai-preset shrink-0 px-2.5 py-1 rounded-lg sub text-xs hover:border-indigo-400/50 cursor-pointer">Activities</button>
+          <button type="button" data-q="What is the rain timing and air quality today?" class="ai-preset shrink-0 px-2.5 py-1 rounded-lg sub text-xs hover:border-indigo-400/50 cursor-pointer">Rain &amp; AQI</button>
+        </div>
+      </div>
+      <div id="ai-messages" class="p-5 overflow-y-auto space-y-3 flex-1 text-xs sm:text-sm"></div>
+      <form id="ai-form" class="p-4 border-t border-slate-800 flex gap-2">
+        <input id="ai-input" type="text" placeholder="Ask about today's weather..." class="flex-1 px-3.5 py-2 rounded-xl sub text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/60" />
+        <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold cursor-pointer">Ask</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const DEHRADUN = { name: 'Dehradun', admin1: 'Uttarakhand', country: 'India', latitude: 30.3165, longitude: 78.0322 };
+    const DEFAULT_FAVS = [
+      DEHRADUN,
+      { name: 'New Delhi', admin1: 'Delhi', country: 'India', latitude: 28.6139, longitude: 77.209 },
+      { name: 'Tokyo', admin1: 'Tokyo', country: 'Japan', latitude: 35.6762, longitude: 139.6503 },
+      { name: 'London', admin1: 'England', country: 'United Kingdom', latitude: 51.5072, longitude: -0.1276 },
+    ];
+    const WMO = {
+      0: ['Clear Sky', '☀️'], 1: ['Mainly Clear', '🌤️'], 2: ['Partly Cloudy', '⛅'], 3: ['Overcast', '☁️'],
+      45: ['Foggy', '🌫️'], 48: ['Rime Fog', '🌫️'], 51: ['Light Drizzle', '🌦️'], 53: ['Drizzle', '🌦️'],
+      55: ['Heavy Drizzle', '🌧️'], 61: ['Slight Rain', '🌦️'], 63: ['Moderate Rain', '🌧️'], 65: ['Heavy Rain', '⛈️'],
+      71: ['Light Snow', '🌨️'], 73: ['Snow', '❄️'], 75: ['Heavy Snow', '❄️'], 80: ['Rain Showers', '🌦️'],
+      81: ['Showers', '🌧️'], 82: ['Heavy Showers', '⛈️'], 95: ['Thunderstorm', '⛈️'], 96: ['Storm & Hail', '⛈️'],
+    };
+    const GLOSSARY = [
+      ['Dew Point', 'Temperature air must cool to for saturation; ≥16°C (60°F) feels humid, ≥20°C (68°F) feels muggy.'],
+      ['US AQI', '0–500 air pollution scale: 0–50 Good, 51–100 Moderate, 101–150 Sensitive, 151+ Unhealthy.'],
+      ['UV Index', 'Solar UV intensity: 0–2 Low, 3–5 Moderate, 6–7 High, 8–10 Very High, 11+ Extreme.'],
+      ['Feels Like', 'Apparent temperature combining air temp, humidity, and wind effects on body comfort.'],
+      ['Wind Gusts', 'Short-lived wind speed peaks typically 25–50% higher than sustained wind speed.'],
+    ];
+
+    const state = {
+      unit: localStorage.getItem('atmos_unit') || 'metric',
+      city: JSON.parse(localStorage.getItem('atmos_city') || 'null') || DEHRADUN,
+      favorites: JSON.parse(localStorage.getItem('atmos_favs') || 'null') || DEFAULT_FAVS,
+      weather: null,
+      aq: null,
+      chat: [{ role: 'bot', text: 'Ask me about Dehradun or any selected city—outfits, activities, rain timing, or air quality.' }],
+    };
+
+    const toast = (msg) => {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.add('hidden'), 2600);
+    };
+
+    const fmtT = (c, withUnit = false) => {
+      if (c == null || Number.isNaN(c)) return '--°';
+      const v = Math.round(state.unit === 'imperial' ? (c * 9) / 5 + 32 : c);
+      return withUnit ? `${v}°${state.unit === 'imperial' ? 'F' : 'C'}` : `${v}°`;
+    };
+    const fmtW = (kmh) => kmh == null ? '--' : state.unit === 'imperial' ? `${Math.round(kmh * 0.621371)} mph` : `${Math.round(kmh)} km/h`;
+    const compass = (deg) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((deg || 0) / 45) % 8];
+    const wmoOf = (code) => ({ label: (WMO[code] || ['Variable', '🌡️'])[0], icon: (WMO[code] || ['Variable', '🌡️'])[1] });
+    const dewPointC = (t, rh) => {
+      if (t == null || !rh) return null;
+      const a = (17.27 * t) / (237.7 + t) + Math.log(rh / 100);
+      return (237.7 * a) / (17.27 - a);
+    };
+
+    async function fetchCityBundle(city) {
+      const fUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&timezone=auto&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,precipitation_probability,weather_code,uv_index&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max`;
+      const aUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${city.latitude}&longitude=${city.longitude}&timezone=auto&current=us_aqi,pm2_5`;
+      const [wRes, aRes] = await Promise.all([fetch(fUrl), fetch(aUrl).catch(() => null)]);
+      if (!wRes.ok) throw new Error('Weather API request failed');
+      return { weather: await wRes.json(), aq: aRes && aRes.ok ? await aRes.json() : null };
+    }
+
+    async function loadCity(city) {
+      state.city = city;
+      localStorage.setItem('atmos_city', JSON.stringify(city));
+      document.getElementById('error-banner').classList.add('hidden');
+      renderFavs();
+      try {
+        const { weather, aq } = await fetchCityBundle(city);
+        state.weather = weather;
+        state.aq = aq;
+        renderAll();
+      } catch (err) {
+        document.getElementById('error-text').textContent = `Failed to load ${city.name}: ${err.message}`;
+        document.getElementById('error-banner').classList.remove('hidden');
+      }
+    }
+
+    function getDecoders() {
+      const cur = state.weather.current;
+      const daily = state.weather.daily;
+      const hourly = state.weather.hourly;
+      const idx = Math.max(0, hourly.time.findIndex((t) => t >= cur.time.slice(0, 13)));
+      const uv = hourly.uv_index?.[idx] ?? daily.uv_index_max?.[0] ?? 0;
+      const aqi = state.aq?.current?.us_aqi ?? null;
+      const pm25 = state.aq?.current?.pm2_5 ?? null;
+      const dp = dewPointC(cur.temperature_2m, cur.relative_humidity_2m);
+      const rain = hourly.precipitation_probability?.[idx] ?? daily.precipitation_probability_max?.[0] ?? 0;
+      const wind = cur.wind_speed_10m ?? 0;
+
+      const uvTag = uv >= 8 ? 'Very High' : uv >= 6 ? 'High' : uv >= 3 ? 'Moderate' : 'Low';
+      const aqiTag = aqi == null ? 'N/A' : aqi > 150 ? 'Unhealthy' : aqi > 100 ? 'Sensitive' : aqi > 50 ? 'Moderate' : 'Good';
+      const humTag = dp != null && dp >= 20 ? 'Muggy' : dp != null && dp >= 16 ? 'Humid' : cur.relative_humidity_2m < 25 ? 'Dry' : 'Pleasant';
+      const windTag = wind >= 45 ? 'Strong' : wind >= 25 ? 'Breezy' : wind >= 12 ? 'Light Breeze' : 'Calm';
+      const rainTag = rain >= 65 ? 'Likely' : rain >= 30 ? 'Possible' : 'Dry';
+
+      return [
+        { id: 'uv', label: 'UV Index', val: uv.toFixed(1), tag: uvTag, sub: `Max ${Number(daily.uv_index_max?.[0] ?? uv).toFixed(1)}`, tip: uv >= 6 ? 'Wear SPF 30+, hat & sunglasses.' : 'Low UV exposure right now.' },
+        { id: 'aqi', label: 'Air Quality', val: aqi != null ? `${Math.round(aqi)}` : '—', tag: aqiTag, sub: pm25 != null ? `PM2.5 ${pm25.toFixed(1)} µg/m³` : 'US AQI', tip: aqi > 100 ? 'Cut back intense outdoor effort.' : 'Air is clean for outdoor plans.' },
+        { id: 'hum', label: 'Humidity & Dew', val: `${Math.round(cur.relative_humidity_2m)}%`, tag: humTag, sub: dp != null ? `Dew ${fmtT(dp)}` : 'RH', tip: dp >= 18 ? 'Air feels heavy; stay hydrated.' : 'Comfortable moisture levels.' },
+        { id: 'wind', label: 'Wind', val: fmtW(wind), tag: windTag, sub: `Dir ${compass(cur.wind_direction_10m)}`, tip: wind >= 30 ? 'Noticeable gusts outdoors.' : 'Calm-to-gentle airflow.' },
+        { id: 'rain', label: 'Rain Chance', val: `${Math.round(rain)}%`, tag: rainTag, sub: `Today max ${Math.round(daily.precipitation_probability_max?.[0] ?? rain)}%`, tip: rain >= 50 ? 'Carry an umbrella or shell.' : 'Dry conditions expected.' },
+      ];
+    }
+
+    function renderHeroAndSummary() {
+      const cur = state.weather.current;
+      const daily = state.weather.daily;
+      const hourly = state.weather.hourly;
+      const wmo = wmoOf(cur.weather_code);
+      const diff = (cur.apparent_temperature ?? cur.temperature_2m) - cur.temperature_2m;
+      const comfort = diff <= -2 ? 'Cooler with wind' : diff >= 2 ? 'Warmer with humidity' : 'True to air temp';
+
+      document.getElementById('hero-city').textContent = `${state.city.name}${state.city.country ? `, ${state.city.country}` : ''}`;
+      document.getElementById('hero-updated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('hero-icon').textContent = wmo.icon;
+      document.getElementById('hero-temp').textContent = fmtT(cur.temperature_2m);
+      document.getElementById('hero-cond').textContent = wmo.label;
+      document.getElementById('hero-feels').textContent = `Feels like ${fmtT(cur.apparent_temperature, true)} • ${comfort}`;
+      document.getElementById('hero-high').textContent = fmtT(daily.temperature_2m_max[0]);
+      document.getElementById('hero-low').textContent = fmtT(daily.temperature_2m_min[0]);
+      document.getElementById('stat-hum').textContent = `${Math.round(cur.relative_humidity_2m)}%`;
+      document.getElementById('stat-wind').textContent = `${fmtW(cur.wind_speed_10m)} ${compass(cur.wind_direction_10m)}`;
+      document.getElementById('stat-rain').textContent = `${Math.round(daily.precipitation_probability_max[0] ?? 0)}%`;
+
+      let peakRain = '';
+      for (let i = 0; i < Math.min(24, hourly.precipitation_probability.length); i++) {
+        if (hourly.precipitation_probability[i] >= 40) {
+          const hr = new Date(hourly.time[i]).toLocaleTimeString([], { hour: 'numeric', hour12: true });
+          peakRain = ` Rain risk peaks near ${hr} (${hourly.precipitation_probability[i]}%).`;
+          break;
+        }
+      }
+      const hiC = daily.temperature_2m_max[0];
+      const loC = daily.temperature_2m_min[0];
+      document.getElementById('summary-title').textContent = `${wmo.label} in ${state.city.name} • High ${fmtT(hiC, true)}`;
+      document.getElementById('summary-desc').textContent = `Temperatures span ${fmtT(loC)} to ${fmtT(hiC)} with ${Math.round(cur.relative_humidity_2m)}% humidity and ${fmtW(cur.wind_speed_10m)} winds.${peakRain || ' Dry skies dominate the next 24 hours.'}`;
+      document.getElementById('summary-gear').textContent =
+        (daily.precipitation_probability_max[0] ?? 0) >= 50 ? 'Bring an umbrella or waterproof jacket.' :
+        hiC >= 30 ? 'Light breathable clothing, sun hat & water.' :
+        loC <= 12 ? 'Layered jacket for chilly morning/evening air.' : 'Light casual layers work well.';
+    }
+
+    function renderMetrics() {
+      const grid = document.getElementById('metrics-grid');
+      grid.innerHTML = getDecoders().map((m) => `
+        <button type="button" data-scale="${m.id}" class="card rounded-2xl p-4 text-left hover:border-indigo-400/50 transition flex flex-col justify-between gap-2 cursor-pointer">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs font-semibold text-slate-400">${m.label}</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300">${m.tag}</span>
+          </div>
+          <div>
+            <div class="text-2xl font-bold font-mono">${m.val}</div>
+            <div class="text-xs text-slate-400">${m.sub}</div>
+          </div>
+          <p class="text-xs text-slate-300 border-t border-slate-800/70 pt-2">${m.tip}</p>
+        </button>
+      `).join('');
+      grid.querySelectorAll('[data-scale]').forEach((b) => b.addEventListener('click', () => openGlossary('scales', b.dataset.scale)));
+    }
+
+    function renderForecasts() {
+      const h = state.weather.hourly;
+      const start = Math.max(0, h.time.findIndex((t) => t >= state.weather.current.time.slice(0, 13)));
+      const slice = h.time.slice(start, start + 24).map((t, k) => ({
+        t, temp: h.temperature_2m[start + k], rain: h.precipitation_probability[start + k] ?? 0, code: h.weather_code[start + k] ?? 0,
+      }));
+
+      document.getElementById('hourly-strip').innerHTML = slice.map((it, i) => `
+        <div class="shrink-0 w-20 rounded-2xl p-2.5 text-center ${i === 0 ? 'bg-indigo-500/20 border border-indigo-400/40' : 'sub'}">
+          <div class="text-[11px] text-slate-400">${i === 0 ? 'Now' : new Date(it.t).toLocaleTimeString([], { hour: 'numeric', hour12: true })}</div>
+          <div class="text-lg my-1">${wmoOf(it.code).icon}</div>
+          <div class="text-sm font-bold font-mono">${fmtT(it.temp)}</div>
+          <div class="text-[11px] font-mono text-sky-400">💧${Math.round(it.rain)}%</div>
+        </div>
+      `).join('');
+
+      const W = 720, H = 175, pL = 38, pR = 38, pT = 18, pB = 26, pW = W - pL - pR, pH = H - pT - pB;
+      const vals = slice.map((d) => state.unit === 'imperial' ? (d.temp * 9) / 5 + 32 : d.temp);
+      const minV = Math.min(...vals) - 2, maxV = Math.max(...vals) + 2, span = Math.max(maxV - minV, 4);
+      const step = slice.length > 1 ? pW / (slice.length - 1) : pW;
+      const bars = slice.map((d, i) => {
+        const bh = (Math.min(100, d.rain) / 100) * pH * 0.7;
+        return `<rect x="${(pL + i * step - 4).toFixed(1)}" y="${(pT + pH - bh).toFixed(1)}" width="8" height="${bh.toFixed(1)}" rx="2" fill="rgba(56,189,248,0.25)"/>`;
+      }).join('');
+      const pts = vals.map((v, i) => ({ x: pL + i * step, y: pT + pH - ((v - minV) / span) * pH }));
+      const path = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+      const labels = pts.map((p, i) => i % 4 === 0 ? `<text x="${p.x.toFixed(1)}" y="${H - 6}" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="JetBrains Mono">${new Date(slice[i].t).toLocaleTimeString([], { hour: 'numeric', hour12: true })}</text>` : '').join('');
+
+      document.getElementById('hourly-svg').innerHTML = `
+        <text x="${pL - 6}" y="${pT + 6}" text-anchor="end" fill="#fbbf24" font-size="10" font-family="JetBrains Mono">${Math.round(maxV)}°</text>
+        <text x="${pL - 6}" y="${pT + pH}" text-anchor="end" fill="#94a3b8" font-size="10" font-family="JetBrains Mono">${Math.round(minV)}°</text>
+        ${bars}
+        <path d="${path}" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>
+        ${labels}
+      `;
+
+      const d = state.weather.daily;
+      document.getElementById('daily-list').innerHTML = d.time.slice(0, 7).map((day, i) => {
+        const name = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Date(day + 'T12:00:00').toLocaleDateString([], { weekday: 'short' });
+        const w = wmoOf(d.weather_code[i]);
+        return `
+          <div class="py-2.5 flex items-center justify-between gap-2 text-xs sm:text-sm">
+            <span class="w-20 font-medium">${name}</span>
+            <span class="w-20 flex items-center gap-1.5">${w.icon}<span class="text-xs text-sky-400 font-mono">${Math.round(d.precipitation_probability_max[i] ?? 0)}%</span></span>
+            <span class="font-mono"><span class="text-sky-400">${fmtT(d.temperature_2m_min[i])}</span> / <span class="text-rose-400">${fmtT(d.temperature_2m_max[i])}</span></span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderOutfitAndActivities() {
+      const cur = state.weather.current;
+      const daily = state.weather.daily;
+      const feels = cur.apparent_temperature ?? cur.temperature_2m;
+      const rain = daily.precipitation_probability_max[0] ?? 0;
+      const wind = cur.wind_speed_10m ?? 0;
+      const rh = cur.relative_humidity_2m ?? 50;
+      const aqi = state.aq?.current?.us_aqi ?? 45;
+
+      const outfit = feels >= 30
+        ? ['Hot & Airy', [['Top', 'Lightweight breathable tee'], ['Layer', 'Skip heavy layers; UV shirt optional'], ['Bottom', 'Breathable shorts or airy pants'], ['Gear', 'Sunglasses, hat & water']]]
+        : feels >= 18
+        ? ['Mild & Layered', [['Top', 'Cotton tee or light shirt'], ['Layer', 'Light windbreaker or cardigan'], ['Bottom', 'Chinos, jeans, or casual pants'], ['Gear', 'Comfortable walking shoes']]]
+        : ['Cool / Chilly', [['Top', 'Long-sleeve base or knit top'], ['Layer', 'Warm jacket or sweater'], ['Bottom', 'Full-length trousers or denim'], ['Gear', 'Closed shoes & extra layer']]]
+      ;
+      document.getElementById('outfit-tag').textContent = outfit[0];
+      document.getElementById('outfit-list').innerHTML = outfit[1].map(([k, v]) => `
+        <div class="sub rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
+          <span class="text-slate-400 font-medium shrink-0">${k}</span>
+          <span class="text-right text-slate-200">${v}</span>
+        </div>
+      `).join('');
+
+      const clamp = (n) => Math.max(1, Math.min(5, Math.round(n)));
+      const acts = [
+        ['Running', '🏃', clamp(5 - (rain >= 60 ? 2 : rain >= 30 ? 1 : 0) - (aqi > 150 ? 2 : aqi > 100 ? 1 : 0)), aqi > 120 ? 'Watch AQI before hard efforts.' : 'Solid outdoor pace window.'],
+        ['Laundry', '🧺', clamp(5 - (rain >= 45 ? 3 : rain >= 20 ? 1 : 0) - (rh > 78 ? 2 : rh > 65 ? 1 : 0)), rain >= 40 ? 'Rain/humidity may slow drying.' : 'Good drying conditions.'],
+        ['Driving', '🚗', clamp(5 - (rain >= 60 ? 2 : 0) - (wind >= 40 ? 2 : 0) - ([45, 48].includes(cur.weather_code) ? 2 : 0)), rain >= 50 ? 'Wet roads—allow extra space.' : 'Clear road conditions.'],
+        ['Gardening', '🌱', clamp(5 - (rain >= 75 ? 2 : 0) - ((daily.uv_index_max[0] ?? 0) >= 9 ? 1 : 0)), 'Good soil & yard working weather.'],
+        ['Outdoor Dining', '🍽️', clamp(5 - (rain >= 40 ? 2 : 0) - (wind >= 28 ? 1.5 : 0) - (feels < 12 || feels > 34 ? 1.5 : 0)), feels < 14 ? 'Pick a sheltered or heated spot.' : 'Pleasant patio conditions.'],
+      ];
+      document.getElementById('activities-grid').innerHTML = acts.map(([name, icon, score, note]) => `
+        <div class="sub rounded-2xl p-3.5 space-y-1">
+          <div class="flex items-center justify-between font-semibold text-xs sm:text-sm">
+            <span>${icon} ${name}</span>
+            <span class="font-mono text-amber-300">${'★'.repeat(score)}${'☆'.repeat(5 - score)} (${score}/5)</span>
+          </div>
+          <p class="text-xs text-slate-400">${note}</p>
+        </div>
+      `).join('');
+    }
+
+    function renderFavs() {
+      const saved = state.favorites.some((f) => f.name === state.city.name);
+      document.getElementById('bookmark-btn').textContent = saved ? '★ Saved' : '☆ Save City';
+      document.getElementById('favorites-strip').innerHTML = `<span class="text-slate-400">Favorites:</span>` + state.favorites.map((f) => `
+        <button type="button" data-fav="${f.name}" class="px-3 py-1 rounded-full border cursor-pointer ${f.name === state.city.name ? 'bg-indigo-500/20 border-indigo-400/50 text-indigo-200 font-semibold' : 'sub text-slate-300'}">${f.name}</button>
+      `).join('');
+      document.querySelectorAll('[data-fav]').forEach((b) => b.addEventListener('click', () => {
+        const found = state.favorites.find((x) => x.name === b.dataset.fav);
+        if (found) loadCity(found);
+      }));
+    }
+
+    async function openCompare() {
+      const modal = document.getElementById('compare-modal');
+      const body = document.getElementById('compare-body');
+      modal.classList.remove('hidden'); modal.classList.add('flex');
+      body.innerHTML = '<p class="text-slate-400 py-4">Loading comparison...</p>';
+      const list = state.favorites.some((f) => f.name === state.city.name) ? state.favorites : [state.city, ...state.favorites];
+      const rows = await Promise.all(list.slice(0, 6).map(async (c) => {
+        try {
+          const { weather, aq } = await fetchCityBundle(c);
+          return { c, cur: weather.current, hi: weather.daily.temperature_2m_max[0], lo: weather.daily.temperature_2m_min[0], rain: weather.daily.precipitation_probability_max[0] ?? 0, aqi: aq?.current?.us_aqi ?? null };
+        } catch { return { c, err: true }; }
+      }));
+      body.innerHTML = `<table class="w-full text-left border-collapse"><thead><tr class="border-b border-slate-800 text-slate-400 text-xs"><th class="py-2 px-2">City</th><th class="py-2 px-2">Sky</th><th class="py-2 px-2">Temp</th><th class="py-2 px-2">H/L</th><th class="py-2 px-2">Rain</th><th class="py-2 px-2">AQI</th><th class="py-2 px-2"></th></tr></thead><tbody class="divide-y divide-slate-800/60">${rows.map((r) => r.err ? `<tr><td class="py-2 px-2">${r.c.name}</td><td colspan="6" class="text-rose-400">Unavailable</td></tr>` : `<tr><td class="py-2.5 px-2 font-semibold">${r.c.name}</td><td class="py-2.5 px-2">${wmoOf(r.cur.weather_code).icon} ${wmoOf(r.cur.weather_code).label}</td><td class="py-2.5 px-2 font-mono font-bold">${fmtT(r.cur.temperature_2m)}</td><td class="py-2.5 px-2 font-mono"><span class="text-sky-400">${fmtT(r.lo)}</span>/<span class="text-rose-400">${fmtT(r.hi)}</span></td><td class="py-2.5 px-2 font-mono text-sky-400">${Math.round(r.rain)}%</td><td class="py-2.5 px-2 font-mono">${r.aqi != null ? Math.round(r.aqi) : '—'}</td><td class="py-2.5 px-2"><button type="button" data-pick="${r.c.name}" class="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-xs cursor-pointer">Open</button></td></tr>`).join('')}</tbody></table>`;
+      body.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+        const target = list.find((x) => x.name === b.dataset.pick);
+        modal.classList.add('hidden'); modal.classList.remove('flex');
+        if (target) loadCity(target);
+      }));
+    }
+
+    function openGlossary(tab = 'scales', focusId = null) {
+      const modal = document.getElementById('glossary-modal');
+      modal.classList.remove('hidden'); modal.classList.add('flex');
+      const isScales = tab === 'scales';
+      document.getElementById('scales-panel').classList.toggle('hidden', !isScales);
+      document.getElementById('terms-panel').classList.toggle('hidden', isScales);
+      document.getElementById('scales-panel').innerHTML = getDecoders().map((d) => `
+        <div class="sub rounded-2xl p-3.5 ${focusId === d.id ? 'ring-2 ring-indigo-500' : ''}">
+          <div class="font-bold text-sm text-indigo-300">${d.label} — Current: ${d.val} (${d.tag})</div>
+          <p class="text-xs text-slate-300 mt-1">${d.tip} Scale thresholds categorize low/clean to high/elevated risk for quick daily planning.</p>
+        </div>
+      `).join('');
+      renderTerms('');
+    }
+
+    function renderTerms(q) {
+      const term = q.trim().toLowerCase();
+      document.getElementById('terms-list').innerHTML = GLOSSARY.filter(([k, v]) => !term || k.toLowerCase().includes(term) || v.toLowerCase().includes(term))
+        .map(([k, v]) => `<div class="sub rounded-2xl p-3"><div class="font-semibold text-sm">${k}</div><p class="text-xs text-slate-300 mt-0.5">${v}</p></div>`).join('') || '<p class="text-xs text-slate-400">No matching terms.</p>';
+    }
+
+    function localWeatherReply(q) {
+      const cur = state.weather?.current;
+      const daily = state.weather?.daily;
+      if (!cur || !daily) return `Weather data for ${state.city.name} is still loading.`;
+      const t = q.toLowerCase();
+      const w = wmoOf(cur.weather_code);
+      const rain = Math.round(daily.precipitation_probability_max[0] ?? 0);
+      const aqi = state.aq?.current?.us_aqi;
+      if (t.includes('wear') || t.includes('outfit')) return `In ${state.city.name}, it's ${fmtT(cur.temperature_2m, true)} (feels like ${fmtT(cur.apparent_temperature, true)}) with ${w.label.toLowerCase()}. Dress in adaptable layers and bring rain gear if rain risk (${rain}%) rises.`;
+      if (t.includes('run') || t.includes('laundry') || t.includes('dining') || t.includes('activit')) return `For ${state.city.name}: rain chance is ${rain}%, humidity is ${Math.round(cur.relative_humidity_2m)}%, and wind is ${fmtW(cur.wind_speed_10m)}. Dry, low-wind windows are best for outdoor dining, running, and drying laundry.`;
+      if (t.includes('rain') || t.includes('aqi') || t.includes('air')) return `Today's max rain chance in ${state.city.name} is ${rain}%, and US AQI is ${aqi != null ? Math.round(aqi) : 'unavailable'}.`;
+      return `${state.city.name} is currently ${w.label.toLowerCase()} at ${fmtT(cur.temperature_2m, true)} (high ${fmtT(daily.temperature_2m_max[0])}, low ${fmtT(daily.temperature_2m_min[0])}), wind ${fmtW(cur.wind_speed_10m)}, and ${rain}% max rain probability.`;
+    }
+
+    async function askAi(prompt) {
+      if (!prompt.trim()) return;
+      state.chat.push({ role: 'user', text: prompt.trim() });
+      renderChat();
+      const key = document.getElementById('gemini-key-input').value.trim();
+      let reply = '';
+      if (key && state.weather) {
+        try {
+          const ctx = `City: ${state.city.name}, Temp: ${fmtT(state.weather.current.temperature_2m, true)}, Feels: ${fmtT(state.weather.current.apparent_temperature, true)}, Cond: ${wmoOf(state.weather.current.weather_code).label}, RainMax: ${state.weather.daily.precipitation_probability_max[0]}%, AQI: ${state.aq?.current?.us_aqi ?? 'N/A'}`;
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: `Weather context: ${ctx}\nUser question: ${prompt}` }] }] }),
+          });
+          const data = await res.json();
+          reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        } catch { reply = ''; }
+      }
+      state.chat.push({ role: 'bot', text: reply || localWeatherReply(prompt) });
+      renderChat();
+    }
+
+    function renderChat() {
+      const box = document.getElementById('ai-messages');
+      box.innerHTML = state.chat.map((m) => `<div class="flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}"><div class="max-w-[85%] rounded-2xl px-3.5 py-2.5 ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'sub text-slate-200'}">${m.text}</div></div>`).join('');
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function renderAll() {
+      if (!state.weather) return;
+      renderHeroAndSummary();
+      renderMetrics();
+      renderForecasts();
+      renderOutfitAndActivities();
+      renderFavs();
+    }
+
+    function setUnit(u) {
+      state.unit = u;
+      localStorage.setItem('atmos_unit', u);
+      document.getElementById('unit-metric-btn').className = `px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${u === 'metric' ? 'bg-indigo-500 text-white' : 'text-slate-400'}`;
+      document.getElementById('unit-imperial-btn').className = `px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${u === 'imperial' ? 'bg-indigo-500 text-white' : 'text-slate-400'}`;
+      renderAll();
+    }
+
+    document.getElementById('unit-metric-btn').addEventListener('click', () => setUnit('metric'));
+    document.getElementById('unit-imperial-btn').addEventListener('click', () => setUnit('imperial'));
+    document.getElementById('retry-btn').addEventListener('click', () => loadCity(state.city));
+
+    let searchTimer;
+    document.getElementById('city-search-input').addEventListener('input', (e) => {
+      const q = e.target.value.trim();
+      const dd = document.getElementById('search-dropdown');
+      clearTimeout(searchTimer);
+      if (q.length < 2) { dd.classList.add('hidden'); return; }
+      searchTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=en&format=json`);
+          const data = await res.json();
+          const list = data.results || [];
+          dd.classList.remove('hidden');
+          dd.innerHTML = list.length ? list.map((c, i) => `<button type="button" data-idx="${i}" class="w-full text-left px-4 py-2.5 hover:bg-indigo-500/15 text-xs sm:text-sm cursor-pointer"><strong>${c.name}</strong> <span class="text-slate-400">${[c.admin1, c.country].filter(Boolean).join(', ')}</span></button>`).join('') : '<div class="px-4 py-2.5 text-xs text-slate-400">No cities found</div>';
+          dd.querySelectorAll('[data-idx]').forEach((b) => b.addEventListener('click', () => {
+            const c = list[Number(b.dataset.idx)];
+            e.target.value = `${c.name}${c.country ? `, ${c.country}` : ''}`;
+            dd.classList.add('hidden');
+            loadCity({ name: c.name, admin1: c.admin1 || '', country: c.country || '', latitude: c.latitude, longitude: c.longitude });
+          }));
+        } catch { dd.classList.add('hidden'); }
+      }, 260);
+    });
+
+    document.getElementById('geolocate-btn').addEventListener('click', () => {
+      if (!navigator.geolocation) return toast('Geolocation unavailable in this browser.');
+      navigator.geolocation.getCurrentPosition(
+        (p) => loadCity({ name: 'Current Location', admin1: '', country: '', latitude: p.coords.latitude, longitude: p.coords.longitude }),
+        () => toast('Location permission denied; showing current city.')
+      );
+    });
+
+    document.getElementById('bookmark-btn').addEventListener('click', () => {
+      const idx = state.favorites.findIndex((f) => f.name === state.city.name);
+      if (idx >= 0) {
+        if (state.favorites.length <= 1) return toast('Keep at least one favorite city.');
+        state.favorites.splice(idx, 1);
+        toast(`Removed ${state.city.name}`);
+      } else {
+        state.favorites.unshift({ ...state.city });
+        toast(`Saved ${state.city.name}`);
+      }
+      localStorage.setItem('atmos_favs', JSON.stringify(state.favorites));
+      renderFavs();
+    });
+
+    document.getElementById('open-compare-btn').addEventListener('click', openCompare);
+    document.getElementById('open-glossary-btn').addEventListener('click', () => openGlossary('scales'));
+    document.getElementById('tab-scales').addEventListener('click', () => openGlossary('scales'));
+    document.getElementById('tab-terms').addEventListener('click', () => openGlossary('terms'));
+    document.getElementById('glossary-search').addEventListener('input', (e) => renderTerms(e.target.value));
+
+    const openAi = (q) => {
+      const m = document.getElementById('ai-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      renderChat();
+      if (q) askAi(q);
+    };
+    document.getElementById('open-ai-btn').addEventListener('click', () => openAi());
+    document.getElementById('summary-ai-link').addEventListener('click', () => openAi('Give me a quick summary of today\'s weather, outfit, and outdoor plans.'));
+    document.querySelectorAll('.ai-preset').forEach((b) => b.addEventListener('click', () => askAi(b.dataset.q)));
+    document.getElementById('ai-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const inp = document.getElementById('ai-input');
+      askAi(inp.value);
+      inp.value = '';
+    });
+
+    document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => {
+      const m = document.getElementById(b.dataset.close);
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }));
+
+    setUnit(state.unit);
+    loadCity(state.city);
+  </script>
+</body>
+</html>
